@@ -4,7 +4,7 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/YOUR_WEBHOOK_URL"
+SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/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"
 
 invoices = [
     {"id": 1, "supplier": "Supplier A", "due_date": "2025-02-05", "amount": 1500, "discount": 5, "status": "unpaid"},
