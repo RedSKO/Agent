@@ -3,17 +3,10 @@ from flask import Flask, request, jsonify
 from datetime import datetime
 
 import os
-
-#app = Flask(__name__)
-#app.route("/")
-#def home():
-#    return "Hello from AI Agent!"
-
-#if __name__ == "__main__":
-#    port = int(os.environ.get("PORT", 5000))  # Use dynamic Render port
-#    app.run(host="0.0.0.0", port=port)
-
-#app = Flask(__name__)
+from flask import Flask, request, jsonify
+import os
+import requests
+import openai  
 
 app = Flask(__name__)
 
