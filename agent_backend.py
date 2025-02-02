@@ -1,44 +1,42 @@
-import requests
 from flask import Flask, request, jsonify
-from datetime import datetime
+import os
+import openai
 
-import os
 from flask import Flask, request, jsonify
 import os
-import requests
-import openai  
+import openai
 
 app = Flask(__name__)
 
-# Load OpenAI key from environment variables
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-@app.route("/analyze", methods=["POST"])
-def analyze():
+@app.route("/slack/events", methods=["POST"])
+def slack_events():
     data = request.get_json()
-    user_input = data.get("text", "Analyze invoices")
 
-    # Query GPT model
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4", 
-            messages=[
-                {"role": "system", "content": "You are an expert AI assistant analyzing financial documents."},
-                {"role": "user", "content": user_input}
-            ]
-        )
-        ai_response = response["choices"][0]["message"]["content"]
+    # Handle Slack challenge verification
+    if "challenge" in data:
+        return jsonify({"challenge": data["challenge"]})
 
-        # Send response back to Slack
-        response_message = {"text": f"AI Agent Response: {ai_response}"}
-        slack_webhook_url = os.getenv("SLACK_WEBHOOK_URL")
-        if slack_webhook_url:
-            requests.post(slack_webhook_url, json=response_message)
-        return jsonify({"status": "success", "response": ai_response}), 200
+    # Process message events for invoice-related queries
+    if "event" in data and data["event"].get("type") == "message":
+        user_input = data["event"].get("text", "")
+        
+        if user_input:
+            # Customize AI agent prompt to handle invoice-related queries
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an AI agent specializing in analyzing invoices and providing financial recommendations."},
+                    {"role": "user", "content": user_input}
+                ]
+            )
+            ai_response = response["choices"][0]["message"]["content"]
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+            # Format Slack response
+            return jsonify({"text": ai_response})
 
+    return jsonify({"status": "ignored"}), 200
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
