@@ -29,37 +29,42 @@ def verify_slack_request(req):
 
 @app.route("/slack/events", methods=["POST"])
 def slack_events():
-    if not verify_slack_request(request):
-        return "Request verification failed", 400
-
     data = request.get_json()
+    print("Received data:", data)  # Debugging line
 
-    # Handle Slack challenge verification (initial setup)
+    # Handle Slack challenge verification
     if "challenge" in data:
+        print("Challenge received:", data["challenge"])  # Debugging line
         return jsonify({"challenge": data["challenge"]})
 
-    # Process message events for invoice-related queries
-    if "event" in data and data["event"].get("type") == "message":
-        user_input = data["event"].get("text", "")
-        user_id = data["event"].get("user")
-
-        # Ignore messages from the bot itself
-        if user_id == data["event"].get("bot_id"):
-            return jsonify({"status": "ignored"}), 200
-
-        if user_input:
-            # Customize AI agent prompt for invoice analysis
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are an AI agent specializing in analyzing invoices and providing financial recommendations."},
-                    {"role": "user", "content": user_input}
-                ]
+    # Handle file uploads in Slack
+    if "event" in data and data["event"].get("type") == "file_shared":
+        print("File shared event detected.")  # Debugging line
+        file_info = data["event"].get("file")
+        file_url = file_info.get("url_private_download")
+        
+        # Download the file content
+        headers = {'Authorization': f"Bearer {slack_token}"}
+        file_content = download_file(file_url)
+        
+        # Parse the Excel file
+        invoice_data = parse_excel(file_content)
+        print("Invoice data parsed:", invoice_data)  # Debugging line
+        
+        # Generate recommendations using OpenAI based on the invoice data
+        recommendations = generate_openai_recommendations(invoice_data)
+        print("Generated recommendations:", recommendations)  # Debugging line
+        
+        # Send the recommendations back to Slack
+        try:
+            response = client.chat_postMessage(
+                channel=data["event"]["channel"],
+                text=recommendations
             )
-            ai_response = response["choices"][0]["message"]["content"]
-
-            # Format the Slack response with AI-generated recommendation
-            return jsonify({"text": ai_response})
+            return jsonify({"status": "success"}), 200
+        except SlackApiError as e:
+            print("Error posting message to Slack:", str(e))  # Debugging line
+            return jsonify({"error": str(e)}), 400
 
     return jsonify({"status": "ignored"}), 200
 
