@@ -114,7 +114,6 @@ def slack_event():
 
     return jsonify({"status": "ignored"})
 
-
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 10000))  # Adjust to Render's detected port
     app.run(host="0.0.0.0", port=port)
