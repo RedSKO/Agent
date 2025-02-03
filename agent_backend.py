@@ -97,18 +97,28 @@ def send_slack_message(channel, text, ts=None):
         logging.error(f"Failed to send message to Slack: {e}")
 
 
-# Root endpoint for testing
-@app.route("/")
-def home():
-    return "Service is running!"
+import logging
+logging.basicConfig(level=logging.DEBUG)
 
-# Slack event endpoint
 @app.route("/slack/events", methods=["POST"])
-def slack_event():
+def slack_events():
     data = request.json
-    # Handle Slack event logic
-    return jsonify({"status": "success"})
+    logging.debug(f"Received Slack event: {data}")
+    
+    if "challenge" in data:
+        # Handle URL verification
+        return jsonify({"challenge": data["challenge"]})
 
+    event_data = data.get("event", {})
+    logging.debug(f"Event Data: {event_data}")
+    
+    if event_data.get("type") == "message" and not event_data.get("bot_id"):
+        text = event_data.get("text", "")
+        channel = event_data.get("channel")
+        logging.debug(f"Handling message: {text} in channel: {channel}")
+        handle_message(text, channel)
+
+    return jsonify({"status": "ok"})
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))  # Adjust to Render's detected port
     app.run(host="0.0.0.0", port=port)
