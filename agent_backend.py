@@ -20,7 +20,18 @@ HEADERS_CHATGPT = {
     "Authorization": f"Bearer {CHATGPT_API_KEY}",
     "Content-Type": "application/json"
 }
+@app.route("/slack/events", methods=["POST"])
+def slack_event():
+    data = request.json
+    logging.debug(f"Incoming Slack event: {data}")
+    event_data = data.get("event", {})
 
+    if event_data.get("type") == "message" and not event_data.get("bot_id"):
+        text = event_data.get("text", "")
+        channel = event_data.get("channel")
+        handle_message(text, channel)
+        return jsonify({"status": "message processed"})
+    return jsonify({"status": "ignored"})
 
 def process_csv_file(file_url, channel, ts):
     logging.debug(f"Downloading CSV from: {file_url}")
@@ -128,17 +139,7 @@ if __name__ == "__main__":
 
 
 def handle_message(text, channel):
-    # You can process the text from the Slack message here
-    # Example: Send it to ChatGPT for analysis, or whatever logic you want
-    logging.debug(f"Handling message: {text}")
-
-    # Call your function to analyze invoices or respond based on the message
-    if "analyze invoices" in text.lower():
-        # Assuming you have a function to process invoices
-        result = "This is where your logic to analyze invoices would go."
-        send_message_to_slack(result, channel)
-    else:
-        send_message_to_slack("Sorry, I couldn't understand that. Please ask me to analyze invoices.", channel)
+    send_message_to_slack(f"Received your message: {text}", channel)
 
 def send_message_to_slack(message, channel):
     payload = {
@@ -154,3 +155,14 @@ def send_message_to_slack(message, channel):
         logging.error(f"Error sending message to Slack: {response.status_code}")
     else:
         logging.debug("Message sent successfully to Slack")
+
+def analyze_invoices_with_chatgpt(invoices):
+    payload = {
+        "model": "gpt-3.5-turbo",
+        "messages": [{"role": "user", "content": f"Analyze these invoices: {invoices}"}],
+        "temperature": 0.7
+    }
+    response = requests.post(CHATGPT_API_URL, json=payload, headers=HEADERS_CHATGPT)
+    logging.debug(f"ChatGPT response: {response.json()}")
+    return response.json()["choices"][0]["message"]["content"] if response.status_code == 200 else f"Error {response.status_code}"
+
