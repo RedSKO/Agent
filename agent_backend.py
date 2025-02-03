@@ -30,43 +30,35 @@ def verify_slack_request(req):
 @app.route("/slack/events", methods=["POST"])
 def slack_events():
     data = request.get_json()
-    print("Received data:", data)  # Debugging line
 
-    # Handle Slack challenge verification
+    # Debugging: Log the incoming request
+    print("Received data:", data)
+
+    # Handle Slack challenge verification (used during initial setup)
     if "challenge" in data:
-        print("Challenge received:", data["challenge"])  # Debugging line
         return jsonify({"challenge": data["challenge"]})
 
-    # Handle file uploads in Slack
-    if "event" in data and data["event"].get("type") == "file_shared":
-        print("File shared event detected.")  # Debugging line
-        file_info = data["event"].get("file")
-        file_url = file_info.get("url_private_download")
+    # Process message events
+    if "event" in data and data["event"].get("type") == "message":
+        user_input = data["event"].get("text", "")
         
-        # Download the file content
-        headers = {'Authorization': f"Bearer {slack_token}"}
-        file_content = download_file(file_url)
-        
-        # Parse the Excel file
-        invoice_data = parse_excel(file_content)
-        print("Invoice data parsed:", invoice_data)  # Debugging line
-        
-        # Generate recommendations using OpenAI based on the invoice data
-        recommendations = generate_openai_recommendations(invoice_data)
-        print("Generated recommendations:", recommendations)  # Debugging line
-        
-        # Send the recommendations back to Slack
-        try:
-            response = client.chat_postMessage(
-                channel=data["event"]["channel"],
-                text=recommendations
+        if user_input:
+            # Customize AI agent prompt to handle invoice-related queries
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an AI agent specializing in analyzing invoices and providing financial recommendations."},
+                    {"role": "user", "content": user_input}
+                ]
             )
-            return jsonify({"status": "success"}), 200
-        except SlackApiError as e:
-            print("Error posting message to Slack:", str(e))  # Debugging line
-            return jsonify({"error": str(e)}), 400
+            ai_response = response["choices"][0]["message"]["content"]
 
+            # Format the response to Slack
+            return jsonify({"text": ai_response})
+
+    # If no event or message found
     return jsonify({"status": "ignored"}), 200
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
