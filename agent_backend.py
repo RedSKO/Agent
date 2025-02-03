@@ -1,7 +1,5 @@
 import os
 import requests
-import csv
-from io import StringIO
 from flask import Flask, request, jsonify
 import logging
 
@@ -21,6 +19,10 @@ HEADERS_CHATGPT = {
     "Authorization": f"Bearer {CHATGPT_API_KEY}",
     "Content-Type": "application/json"
 }
+
+@app.route("/")
+def home():
+    return "Hello from the Slack bot server!"
 
 @app.route("/slack/events", methods=["POST"])
 def slack_events():
@@ -46,77 +48,11 @@ def slack_events():
     
     return jsonify({"status": "ok"})
 
-def handle_message(text, channel):
+def analyze_with_chatgpt(user_message):
     """
-    Handles incoming Slack messages.
+    Sends the user's message to ChatGPT and returns the response.
     """
-    if text.lower() == "hello":
-        send_slack_message(channel, "Hello! How can I assist you today?")
-    elif text.lower().startswith("analyze csv"):
-        file_url = extract_file_url(text)
-        if file_url:
-            process_csv_file(file_url, channel)
-        else:
-            send_slack_message(channel, "Please provide a valid CSV file URL.")
-    else:
-        send_slack_message(channel, f"Received your message: {text}")
-
-def extract_file_url(text):
-    """
-    Extracts a file URL from the Slack message text.
-    """
-    parts = text.split()
-    for part in parts:
-        if part.startswith("http"):
-            return part
-    return None
-
-def process_csv_file(file_url, channel):
-    """
-    Downloads and processes a CSV file, then sends the analysis to Slack.
-    """
-    logging.debug(f"Downloading CSV from: {file_url}")
-    try:
-        response = requests.get(file_url, headers=HEADERS_SLACK)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        error_message = f"Failed to download file: {e}"
-        logging.error(error_message)
-        send_slack_message(channel, error_message)
-        return
-
-    try:
-        csv_data = StringIO(response.text)
-        csv_reader = csv.DictReader(csv_data)
-        invoice_list = [
-            {
-                "Invoice Number": row['Invoice Number'],
-                "Supplier Name": row['Supplier Name'],
-                "Invoice Amount": row['Invoice Amount'],
-                "Due Date": row['Due Date'],
-                "Payment Terms": row['Payment Terms']
-            }
-            for row in csv_reader
-        ]
-        logging.debug(f"Extracted invoices: {invoice_list}")
-        result = analyze_invoices_with_chatgpt(invoice_list)
-        send_slack_message(channel, result)
-    except Exception as e:
-        error_message = f"Error processing CSV file: {e}"
-        logging.error(error_message)
-        send_slack_message(channel, error_message)
-
-def analyze_invoices_with_chatgpt(invoices):
-    """
-    Sends invoice data to ChatGPT for analysis and returns the response.
-    """
-    logging.debug("Sending data to ChatGPT for analysis.")
-    user_message = (
-        "I have a set of invoice data. Analyze and give me insights like payment priority, "
-        "potential anomalies, or suggestions to optimize financial decisions.\n\n"
-        f"Here is the data:\n{invoices}"
-    )
-
+    logging.debug("Sending user message to ChatGPT for processing.")
     payload = {
         "model": "gpt-3.5-turbo",
         "messages": [{"role": "user", "content": user_message}],
