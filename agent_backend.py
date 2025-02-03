@@ -31,7 +31,7 @@ def verify_slack_request(req):
 def slack_events():
     data = request.get_json()
 
-    # Debugging: Log the incoming request
+    # Log the received data for debugging
     print("Received data:", data)
 
     # Handle Slack challenge verification (used during initial setup)
@@ -43,21 +43,30 @@ def slack_events():
         user_input = data["event"].get("text", "")
         
         if user_input:
+            print(f"User input: {user_input}")
+            
             # Customize AI agent prompt to handle invoice-related queries
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are an AI agent specializing in analyzing invoices and providing financial recommendations."},
-                    {"role": "user", "content": user_input}
-                ]
-            )
-            ai_response = response["choices"][0]["message"]["content"]
+            try:
+                response = openai.ChatCompletion.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": "You are an AI agent specializing in analyzing invoices and providing financial recommendations."},
+                        {"role": "user", "content": user_input}
+                    ]
+                )
+                ai_response = response["choices"][0]["message"]["content"]
+                print("AI Response:", ai_response)
+                
+                # Format Slack response
+                return jsonify({"text": ai_response})
 
-            # Format the response to Slack
-            return jsonify({"text": ai_response})
+            except Exception as e:
+                print("Error with OpenAI API:", str(e))
+                return jsonify({"text": "Sorry, I encountered an error while processing your request."})
 
     # If no event or message found
     return jsonify({"status": "ignored"}), 200
+
 
 
 if __name__ == "__main__":
