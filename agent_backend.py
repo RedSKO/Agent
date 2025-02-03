@@ -97,22 +97,17 @@ def send_slack_message(channel, text, ts=None):
         logging.error(f"Failed to send message to Slack: {e}")
 
 
+# Root endpoint for testing
+@app.route("/")
+def home():
+    return "Service is running!"
+
+# Slack event endpoint
 @app.route("/slack/events", methods=["POST"])
 def slack_event():
     data = request.json
-    logging.debug(f"Received Slack event: {data}")
-    event_data = data.get("event", {})
-
-    if event_data.get("type") == "message" and "files" in event_data:
-        file_url = event_data["files"][0]["url_private_download"]
-        channel = event_data.get("channel")
-        ts = event_data.get("ts")
-
-        # Acknowledge receipt to Slack
-        threading.Thread(target=process_csv_file, args=(file_url, channel, ts)).start()
-        return jsonify({"status": "processing"})
-
-    return jsonify({"status": "ignored"})
+    # Handle Slack event logic
+    return jsonify({"status": "success"})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))  # Adjust to Render's detected port
