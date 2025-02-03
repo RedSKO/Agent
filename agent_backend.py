@@ -22,10 +22,6 @@ HEADERS_CHATGPT = {
     "Content-Type": "application/json"
 }
 
-@app.route("/")
-def home():
-    return "Hello from the Slack bot server!"
-
 @app.route("/slack/events", methods=["POST"])
 def slack_events():
     data = request.json
@@ -33,6 +29,7 @@ def slack_events():
     
     # Handle Slack verification challenge
     if "challenge" in data:
+        logging.debug("Received Slack challenge request.")
         return jsonify({"challenge": data["challenge"]})
     
     # Process Slack events
@@ -40,8 +37,12 @@ def slack_events():
     if event_data.get("type") == "message" and not event_data.get("bot_id"):
         channel = event_data.get("channel")
         text = event_data.get("text", "")
-        logging.debug(f"Incoming message: {text}")
-        handle_message(text, channel)
+        logging.debug(f"Incoming message: {text} in channel: {channel}")
+        
+        # Always send the message to OpenAI for processing
+        response = analyze_with_chatgpt(text)
+        logging.debug(f"Sending response to Slack: {response}")
+        send_slack_message(channel, response)
     
     return jsonify({"status": "ok"})
 
