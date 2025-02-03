@@ -125,3 +125,32 @@ def slack_events():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))  # Adjust to Render's detected port
     app.run(host="0.0.0.0", port=port)
+
+
+def handle_message(text, channel):
+    # You can process the text from the Slack message here
+    # Example: Send it to ChatGPT for analysis, or whatever logic you want
+    logging.debug(f"Handling message: {text}")
+
+    # Call your function to analyze invoices or respond based on the message
+    if "analyze invoices" in text.lower():
+        # Assuming you have a function to process invoices
+        result = "This is where your logic to analyze invoices would go."
+        send_message_to_slack(result, channel)
+    else:
+        send_message_to_slack("Sorry, I couldn't understand that. Please ask me to analyze invoices.", channel)
+
+def send_message_to_slack(message, channel):
+    payload = {
+        "channel": channel,
+        "text": message
+    }
+    response = requests.post(
+        "https://slack.com/api/chat.postMessage",
+        headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
+        json=payload
+    )
+    if response.status_code != 200:
+        logging.error(f"Error sending message to Slack: {response.status_code}")
+    else:
+        logging.debug("Message sent successfully to Slack")
