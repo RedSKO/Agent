@@ -3,7 +3,6 @@ import requests
 import csv
 from io import StringIO
 from flask import Flask, request, jsonify
-import threading
 import logging
 
 # Set up logging
@@ -11,29 +10,70 @@ logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
 
+# Environment variables
 SLACK_BOT_TOKEN = os.getenv('SLACK_BOT_TOKEN')
 CHATGPT_API_URL = "https://api.openai.com/v1/chat/completions"
 CHATGPT_API_KEY = os.getenv('CHATGPT_API_KEY')
 
+# Headers for Slack and ChatGPT APIs
 HEADERS_SLACK = {'Authorization': f'Bearer {SLACK_BOT_TOKEN}'}
 HEADERS_CHATGPT = {
     "Authorization": f"Bearer {CHATGPT_API_KEY}",
     "Content-Type": "application/json"
 }
+
+@app.route("/")
+def home():
+    return "Hello from the Slack bot server!"
+
 @app.route("/slack/events", methods=["POST"])
-def slack_event():
+def slack_events():
     data = request.json
-    logging.debug(f"Incoming Slack event: {data}")
+    logging.debug(f"Received Slack event: {data}")
+    
+    # Handle Slack verification challenge
+    if "challenge" in data:
+        return jsonify({"challenge": data["challenge"]})
+    
+    # Process Slack events
     event_data = data.get("event", {})
-
     if event_data.get("type") == "message" and not event_data.get("bot_id"):
-        text = event_data.get("text", "")
         channel = event_data.get("channel")
+        text = event_data.get("text", "")
+        logging.debug(f"Incoming message: {text}")
         handle_message(text, channel)
-        return jsonify({"status": "message processed"})
-    return jsonify({"status": "ignored"})
+    
+    return jsonify({"status": "ok"})
 
-def process_csv_file(file_url, channel, ts):
+def handle_message(text, channel):
+    """
+    Handles incoming Slack messages.
+    """
+    if text.lower() == "hello":
+        send_slack_message(channel, "Hello! How can I assist you today?")
+    elif text.lower().startswith("analyze csv"):
+        file_url = extract_file_url(text)
+        if file_url:
+            process_csv_file(file_url, channel)
+        else:
+            send_slack_message(channel, "Please provide a valid CSV file URL.")
+    else:
+        send_slack_message(channel, f"Received your message: {text}")
+
+def extract_file_url(text):
+    """
+    Extracts a file URL from the Slack message text.
+    """
+    parts = text.split()
+    for part in parts:
+        if part.startswith("http"):
+            return part
+    return None
+
+def process_csv_file(file_url, channel):
+    """
+    Downloads and processes a CSV file, then sends the analysis to Slack.
+    """
     logging.debug(f"Downloading CSV from: {file_url}")
     try:
         response = requests.get(file_url, headers=HEADERS_SLACK)
@@ -41,7 +81,7 @@ def process_csv_file(file_url, channel, ts):
     except requests.RequestException as e:
         error_message = f"Failed to download file: {e}"
         logging.error(error_message)
-        send_slack_message(channel, error_message, ts)
+        send_slack_message(channel, error_message)
         return
 
     try:
@@ -59,14 +99,16 @@ def process_csv_file(file_url, channel, ts):
         ]
         logging.debug(f"Extracted invoices: {invoice_list}")
         result = analyze_invoices_with_chatgpt(invoice_list)
-        send_slack_message(channel, result, ts)
+        send_slack_message(channel, result)
     except Exception as e:
         error_message = f"Error processing CSV file: {e}"
         logging.error(error_message)
-        send_slack_message(channel, error_message, ts)
-
+        send_slack_message(channel, error_message)
 
 def analyze_invoices_with_chatgpt(invoices):
+    """
+    Sends invoice data to ChatGPT for analysis and returns the response.
+    """
     logging.debug("Sending data to ChatGPT for analysis.")
     user_message = (
         "I have a set of invoice data. Analyze and give me insights like payment priority, "
@@ -91,8 +133,10 @@ def analyze_invoices_with_chatgpt(invoices):
         logging.error(error_message)
         return error_message
 
-
 def send_slack_message(channel, text, ts=None):
+    """
+    Sends a message to a Slack channel.
+    """
     logging.debug(f"Sending message to Slack channel: {channel}")
     try:
         payload = {"channel": channel, "text": text}
@@ -107,62 +151,6 @@ def send_slack_message(channel, text, ts=None):
     except requests.RequestException as e:
         logging.error(f"Failed to send message to Slack: {e}")
 
-
-import logging
-logging.basicConfig(level=logging.DEBUG)
-
-@app.route("/")
-def home():
-    return "Hello from the Slack bot server!"
-
-@app.route("/slack/events", methods=["POST"])
-def slack_events():
-    data = request.json
-    logging.debug(f"Received Slack event: {data}")
-    
-    # Handle Slack verification
-    if "challenge" in data:
-        return jsonify({"challenge": data["challenge"]})
-    
-    event_data = data.get("event", {})
-    if event_data.get("type") == "message" and not event_data.get("bot_id"):
-        channel = event_data.get("channel")
-        text = event_data.get("text", "")
-        logging.debug(f"Incoming message: {text}")
-        handle_message(text, channel)
-    
-    return jsonify({"status": "ok"})
-
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))  # Adjust to Render's detected port
     app.run(host="0.0.0.0", port=port)
-
-
-def handle_message(text, channel):
-    send_message_to_slack(f"Received your message: {text}", channel)
-
-def send_message_to_slack(message, channel):
-    payload = {
-        "channel": channel,
-        "text": message
-    }
-    response = requests.post(
-        "https://slack.com/api/chat.postMessage",
-        headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
-        json=payload
-    )
-    if response.status_code != 200:
-        logging.error(f"Error sending message to Slack: {response.status_code}")
-    else:
-        logging.debug("Message sent successfully to Slack")
-
-def analyze_invoices_with_chatgpt(invoices):
-    payload = {
-        "model": "gpt-3.5-turbo",
-        "messages": [{"role": "user", "content": f"Analyze these invoices: {invoices}"}],
-        "temperature": 0.7
-    }
-    response = requests.post(CHATGPT_API_URL, json=payload, headers=HEADERS_CHATGPT)
-    logging.debug(f"ChatGPT response: {response.json()}")
-    return response.json()["choices"][0]["message"]["content"] if response.status_code == 200 else f"Error {response.status_code}"
-
