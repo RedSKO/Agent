@@ -3,18 +3,7 @@ import requests
 import csv
 from io import StringIO
 from flask import Flask, request, jsonify
-import logging
 
-logging.basicConfig(level=logging.DEBUG)
-
-def process_csv_file(file_url):
-    response = requests.get(file_url, headers=HEADERS_SLACK)
-    logging.debug(f"File download response: {response.status_code}")
-    
-    if response.status_code != 200:
-        return f"Failed to download file: {response.status_code}"
-
-    # Further steps...
 
 app = Flask(__name__)
 
