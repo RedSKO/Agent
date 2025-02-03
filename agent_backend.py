@@ -52,7 +52,7 @@ def slack_events():
                     messages=[
                         {"role": "system", "content": "You are an AI agent specializing in analyzing invoices and providing financial recommendations."},
                         {"role": "user", "content": user_input}
-                    ] timeout=10
+                    ]
                 )
                 ai_response = response["choices"][0]["message"]["content"]
                 print("AI Response:", ai_response)
