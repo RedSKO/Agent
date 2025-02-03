@@ -3,10 +3,14 @@ import requests
 import csv
 from io import StringIO
 from flask import Flask, request, jsonify
+import threading
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
 
-# Environment Variables for Security
 SLACK_BOT_TOKEN = os.getenv('SLACK_BOT_TOKEN')
 CHATGPT_API_URL = "https://api.openai.com/v1/chat/completions"
 CHATGPT_API_KEY = os.getenv('CHATGPT_API_KEY')
@@ -18,13 +22,16 @@ HEADERS_CHATGPT = {
 }
 
 
-def process_csv_file(file_url):
-    """Downloads and processes CSV file, extracts invoice information."""
+def process_csv_file(file_url, channel, ts):
+    logging.debug(f"Downloading CSV from: {file_url}")
     try:
         response = requests.get(file_url, headers=HEADERS_SLACK)
         response.raise_for_status()
     except requests.RequestException as e:
-        return f"Failed to download file: {e}"
+        error_message = f"Failed to download file: {e}"
+        logging.error(error_message)
+        send_slack_message(channel, error_message, ts)
+        return
 
     try:
         csv_data = StringIO(response.text)
@@ -39,19 +46,23 @@ def process_csv_file(file_url):
             }
             for row in csv_reader
         ]
-        return analyze_invoices_with_chatgpt(invoice_list)
+        logging.debug(f"Extracted invoices: {invoice_list}")
+        result = analyze_invoices_with_chatgpt(invoice_list)
+        send_slack_message(channel, result, ts)
     except Exception as e:
-        return f"Error processing CSV file: {e}"
+        error_message = f"Error processing CSV file: {e}"
+        logging.error(error_message)
+        send_slack_message(channel, error_message, ts)
 
 
 def analyze_invoices_with_chatgpt(invoices):
-    """Sends invoice data to ChatGPT and retrieves AI insights."""
+    logging.debug("Sending data to ChatGPT for analysis.")
     user_message = (
         "I have a set of invoice data. Analyze and give me insights like payment priority, "
         "potential anomalies, or suggestions to optimize financial decisions.\n\n"
         f"Here is the data:\n{invoices}"
     )
-    
+
     payload = {
         "model": "gpt-3.5-turbo",
         "messages": [{"role": "user", "content": user_message}],
@@ -61,43 +72,45 @@ def analyze_invoices_with_chatgpt(invoices):
     try:
         response = requests.post(CHATGPT_API_URL, json=payload, headers=HEADERS_CHATGPT)
         response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
+        chat_response = response.json()["choices"][0]["message"]["content"]
+        logging.debug(f"ChatGPT response: {chat_response}")
+        return chat_response
     except requests.RequestException as e:
-        return f"Failed to connect to ChatGPT: {e}"
+        error_message = f"Failed to connect to ChatGPT: {e}"
+        logging.error(error_message)
+        return error_message
+
+
+def send_slack_message(channel, text, ts=None):
+    logging.debug(f"Sending message to Slack channel: {channel}")
+    try:
+        payload = {"channel": channel, "text": text}
+        if ts:
+            payload["thread_ts"] = ts
+        response = requests.post(
+            "https://slack.com/api/chat.postMessage",
+            headers=HEADERS_SLACK,
+            json=payload
+        )
+        logging.debug(f"Slack response: {response.json()}")
+    except requests.RequestException as e:
+        logging.error(f"Failed to send message to Slack: {e}")
 
 
 @app.route("/slack/events", methods=["POST"])
 def slack_event():
     data = request.json
+    logging.debug(f"Received Slack event: {data}")
     event_data = data.get("event", {})
 
     if event_data.get("type") == "message" and "files" in event_data:
         file_url = event_data["files"][0]["url_private_download"]
-        
-        # Acknowledge receipt immediately to avoid Slack timeout
-        requests.post(
-            "https://slack.com/api/chat.postMessage",
-            headers=HEADERS_SLACK,
-            json={
-                "channel": event_data.get("channel"),
-                "text": "Bip bop, recherche et rassemblement des informations…",
-                "thread_ts": event_data.get("ts")
-            }
-        )
-        
-        result = process_csv_file(file_url)
-        
-        requests.post(
-            "https://slack.com/api/chat.postMessage",
-            headers=HEADERS_SLACK,
-            json={
-                "channel": event_data.get("channel"),
-                "text": result,
-                "thread_ts": event_data.get("ts")
-            }
-        )
-        
-        return jsonify({"status": "ok"})
+        channel = event_data.get("channel")
+        ts = event_data.get("ts")
+
+        # Acknowledge receipt to Slack
+        threading.Thread(target=process_csv_file, args=(file_url, channel, ts)).start()
+        return jsonify({"status": "processing"})
 
     return jsonify({"status": "ignored"})
 
