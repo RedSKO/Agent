@@ -100,25 +100,28 @@ def send_slack_message(channel, text, ts=None):
 import logging
 logging.basicConfig(level=logging.DEBUG)
 
+@app.route("/")
+def home():
+    return "Hello from the Slack bot server!"
+
 @app.route("/slack/events", methods=["POST"])
 def slack_events():
     data = request.json
     logging.debug(f"Received Slack event: {data}")
     
+    # Handle Slack verification
     if "challenge" in data:
-        # Handle URL verification
         return jsonify({"challenge": data["challenge"]})
-
-    event_data = data.get("event", {})
-    logging.debug(f"Event Data: {event_data}")
     
+    event_data = data.get("event", {})
     if event_data.get("type") == "message" and not event_data.get("bot_id"):
-        text = event_data.get("text", "")
         channel = event_data.get("channel")
-        logging.debug(f"Handling message: {text} in channel: {channel}")
+        text = event_data.get("text", "")
+        logging.debug(f"Incoming message: {text}")
         handle_message(text, channel)
-
+    
     return jsonify({"status": "ok"})
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))  # Adjust to Render's detected port
     app.run(host="0.0.0.0", port=port)
